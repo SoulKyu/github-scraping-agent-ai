@@ -1,0 +1,86 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "github-scraping-ai.fullname" . }}
+  labels:
+    {{- include "github-scraping-ai.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.schedule | quote }}
+  concurrencyPolicy: {{ .Values.concurrencyPolicy }}
+  failedJobsHistoryLimit: {{ .Values.failedJobsHistoryLimit }}
+  successfulJobsHistoryLimit: {{ .Values.successfulJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            {{- include "github-scraping-ai.selectorLabels" . | nindent 12 }}
+          {{- with .Values.podAnnotations }}
+          annotations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        spec:
+          restartPolicy: {{ .Values.restartPolicy }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          containers:
+            - name: {{ .Chart.Name }}
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  # Replace secret placeholders in config
+                  sed -i "s|SECRET_GITHUB_TOKEN|$GITHUB_TOKEN|g" /app/config/config.json
+                  sed -i "s|SECRET_LLM_API_KEY|$LLM_API_KEY|g" /app/config/config.json
+                  sed -i "s|SECRET_DISCORD_WEBHOOK|$DISCORD_WEBHOOK|g" /app/config/config.json
+                  # Run the pipeline
+                  python -m src.main \
+                    --config /app/config/config.json \
+                    --prompt /app/config/prompt.md \
+                    --cache /app/data/seen_repos.json \
+                    --rejected-log /app/data/rejected_repos.log \
+                    --since {{ .Values.config.settings.since | quote }}
+              env:
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "github-scraping-ai.secretName" . }}
+                      key: {{ .Values.existingSecret.githubTokenKey }}
+                - name: LLM_API_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "github-scraping-ai.secretName" . }}
+                      key: {{ .Values.existingSecret.llmApiKeyKey }}
+                - name: DISCORD_WEBHOOK
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ include "github-scraping-ai.secretName" . }}
+                      key: {{ .Values.existingSecret.discordWebhookKey }}
+                {{- with .Values.extraEnv }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+              volumeMounts:
+                - name: config
+                  mountPath: /app/config
+                - name: data
+                  mountPath: /app/data
+          volumes:
+            - name: config
+              configMap:
+                name: {{ include "github-scraping-ai.fullname" . }}
+            - name: data
+              emptyDir: {}

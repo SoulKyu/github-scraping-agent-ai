@@ -2,12 +2,14 @@
 
 import json
 import tempfile
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from dateutil.relativedelta import relativedelta
 
-from src.main import run_pipeline
+from src.main import run_pipeline, parse_since_date
 from src.github import Repository
 
 
@@ -117,3 +119,38 @@ def test_run_pipeline_excludes_forks(temp_config, temp_prompt, temp_cache):
             mock_async_client.search_repos.assert_called_once()
             call_kwargs = mock_async_client.search_repos.call_args[1]
             assert call_kwargs.get("exclude_forks") is True
+
+
+def test_parse_since_date_days():
+    """parse_since_date handles days correctly."""
+    result = parse_since_date("7d")
+    expected = (date.today() - timedelta(days=7)).isoformat()
+    assert result == expected
+
+
+def test_parse_since_date_hours():
+    """parse_since_date handles hours correctly."""
+    result = parse_since_date("12h")
+    # Hours result in same day or previous day
+    expected = (date.today() - timedelta(hours=12)).isoformat()
+    assert result == expected
+
+
+def test_parse_since_date_months():
+    """parse_since_date handles months correctly."""
+    result = parse_since_date("1m")
+    expected = (date.today() - relativedelta(months=1)).isoformat()
+    assert result == expected
+
+
+def test_parse_since_date_iso():
+    """parse_since_date passes through ISO dates."""
+    result = parse_since_date("2024-12-10")
+    assert result == "2024-12-10"
+
+
+def test_parse_since_date_case_insensitive():
+    """parse_since_date is case insensitive for units."""
+    result_lower = parse_since_date("7d")
+    result_upper = parse_since_date("7D")
+    assert result_lower == result_upper

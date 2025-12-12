@@ -3,9 +3,11 @@
 import argparse
 import asyncio
 import logging
+import re
 import sys
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from dateutil.relativedelta import relativedelta
 
 from src.cache import RepoCache
 from src.config import load_config
@@ -19,6 +21,36 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def parse_since_date(since_value: str) -> str:
+    """Parse --since value to ISO date string.
+
+    Supports:
+    - Relative time: 7d (days), 12h (hours), 1m (months)
+    - ISO date: 2024-12-10
+
+    Returns:
+        ISO date string (YYYY-MM-DD)
+    """
+    # Check for relative time pattern
+    match = re.match(r"^(\d+)([hdm])$", since_value.lower())
+    if match:
+        amount = int(match.group(1))
+        unit = match.group(2)
+
+        now = datetime.now()
+        if unit == "h":
+            result = now - timedelta(hours=amount)
+        elif unit == "d":
+            result = now - timedelta(days=amount)
+        elif unit == "m":
+            result = now - relativedelta(months=amount)
+
+        return result.date().isoformat()
+
+    # Assume ISO date format
+    return since_value
 
 
 def log_rejected_repo(log_path: Path, repo, reason: str) -> None:
@@ -161,7 +193,7 @@ def main() -> int:
     """Run the GitHub scraping pipeline."""
     parser = argparse.ArgumentParser(description="Discover interesting GitHub projects")
     parser.add_argument("--dry-run", action="store_true", help="Show results without posting to Discord")
-    parser.add_argument("--since", type=str, help="Override date (YYYY-MM-DD)")
+    parser.add_argument("--since", type=str, help="Time range: relative (7d, 12h, 1m) or ISO date (YYYY-MM-DD)")
     parser.add_argument("--config", type=str, default="config.json", help="Path to config file")
     parser.add_argument("--prompt", type=str, default="prompt.md", help="Path to prompt file")
     parser.add_argument("--cache", type=str, default="seen_repos.json", help="Path to cache file")
@@ -176,13 +208,19 @@ def main() -> int:
     cache_path = base_dir / args.cache
     rejected_log_path = base_dir / args.rejected_log
 
+    # Parse since date if provided
+    since_date = None
+    if args.since:
+        since_date = parse_since_date(args.since)
+        logger.info(f"Using date filter: {since_date}")
+
     try:
         result = run_pipeline(
             config_path=config_path,
             prompt_path=prompt_path,
             cache_path=cache_path,
             dry_run=args.dry_run,
-            since_date=args.since,
+            since_date=since_date,
             rejected_log_path=rejected_log_path,
         )
         logger.info(f"Done! Processed {result['processed']}, matched {result['matched']}")

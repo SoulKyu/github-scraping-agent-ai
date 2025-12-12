@@ -1,0 +1,84 @@
+# CronJob schedule (default: daily at 9 AM)
+schedule: "0 9 * * *"
+
+image:
+  repository: ghcr.io/youruser/github-scraping-ai
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Resource limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# CronJob settings
+concurrencyPolicy: Forbid
+failedJobsHistoryLimit: 3
+successfulJobsHistoryLimit: 3
+restartPolicy: OnFailure
+
+# Application configuration
+config:
+  github:
+    # GitHub token - use existingSecret for production
+    token: ""
+    # Keywords for filtering (OR logic)
+    keywords: []
+
+  llm:
+    provider: openai
+    model: gpt-4o-mini
+    # API key - use existingSecret for production
+    apiKey: ""
+
+  discord:
+    # Webhook URL - use existingSecret for production
+    webhookUrl: ""
+
+  settings:
+    maxRepos: 1000
+    readmeMaxChars: 500
+    batchSize: 10
+    cacheDays: 30
+    # Time range: relative (7d, 12h, 1m) or ISO date
+    since: "1d"
+
+# Prompt for LLM evaluation (multiline string)
+prompt: |
+  I'm interested in:
+  - Kubernetes tools
+  - DevOps tooling
+  - Cloud-native infrastructure
+
+  I'm NOT interested in:
+  - AI/ML tools
+  - Cryptocurrency projects
+
+# Use existing Secret instead of inline values
+# If set, the chart will reference this Secret for sensitive values
+existingSecret:
+  # Name of existing Secret
+  name: ""
+  # Keys in the Secret
+  githubTokenKey: github-token
+  llmApiKeyKey: llm-api-key
+  discordWebhookKey: discord-webhook
+
+# Additional environment variables
+extraEnv: []
+
+# Pod annotations
+podAnnotations: {}
+
+# Node selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}

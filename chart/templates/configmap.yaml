@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "github-scraping-ai.fullname" . }}
+  labels:
+    {{- include "github-scraping-ai.labels" . | nindent 4 }}
+data:
+  config.json: |
+    {
+      "github": {
+        "token": "SECRET_GITHUB_TOKEN",
+        "keywords": {{ .Values.config.github.keywords | toJson }}
+      },
+      "llm": {
+        "provider": {{ .Values.config.llm.provider | quote }},
+        "model": {{ .Values.config.llm.model | quote }},
+        "api_key": "SECRET_LLM_API_KEY"
+      },
+      "discord": {
+        "webhook_url": "SECRET_DISCORD_WEBHOOK"
+      },
+      "settings": {
+        "max_repos": {{ .Values.config.settings.maxRepos }},
+        "readme_max_chars": {{ .Values.config.settings.readmeMaxChars }},
+        "batch_size": {{ .Values.config.settings.batchSize }},
+        "cache_days": {{ .Values.config.settings.cacheDays }}
+      }
+    }
+  prompt.md: |
+{{ .Values.prompt | indent 4 }}

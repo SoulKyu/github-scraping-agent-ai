@@ -1,0 +1,131 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run tests
+        run: uv run pytest -v
+
+  build-and-release:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate version tag
+        id: version
+        run: |
+          VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Generated version: $VERSION"
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+
+          if [ -z "$LATEST_TAG" ]; then
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
+            CONTRIBUTORS=$(git log --pretty=format:"%an" --no-merges | sort -u)
+          else
+            COMMITS=$(git log ${LATEST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+            CONTRIBUTORS=$(git log ${LATEST_TAG}..HEAD --pretty=format:"%an" --no-merges | sort -u)
+          fi
+
+          FORMATTED_CONTRIBUTORS=""
+          while IFS= read -r author; do
+            if [ ! -z "$author" ]; then
+              FORMATTED_CONTRIBUTORS="${FORMATTED_CONTRIBUTORS}- ${author}\n"
+            fi
+          done <<< "$CONTRIBUTORS"
+
+          echo "commits<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMITS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+          echo "contributors<<EOF" >> $GITHUB_OUTPUT
+          echo -e "$FORMATTED_CONTRIBUTORS" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: soulkyu
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          docker build -t soulkyu/github-scraping-ai:${VERSION} -t soulkyu/github-scraping-ai:latest .
+          docker push soulkyu/github-scraping-ai:${VERSION}
+          docker push soulkyu/github-scraping-ai:latest
+
+      - name: Create and push tag
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git tag ${{ steps.version.outputs.version }}
+          git push origin ${{ steps.version.outputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          body: |
+            ## Commits
+            ${{ steps.changelog.outputs.commits }}
+
+            ## Contributors
+            ${{ steps.changelog.outputs.contributors }}
+
+            ## Docker Image
+            ```bash
+            docker pull soulkyu/github-scraping-ai:${{ steps.version.outputs.version }}
+            ```
+
+            Also available as `:latest`.
+
+            ## Helm Chart
+            ```bash
+            helm install github-scraping-ai ./chart \
+              --set config.github.token=ghp_xxx \
+              --set config.llm.apiKey=sk-xxx \
+              --set config.discord.webhookUrl=https://...
+            ```
+          draft: false
+          prerelease: false
