@@ -1,14 +1,14 @@
 {{/*
 Expand the name of the chart.
 */}}
-{{- define "github-scraping-ai.name" -}}
+{{- define "github-scraping-agent-ai.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Create a default fully qualified app name.
 */}}
-{{- define "github-scraping-ai.fullname" -}}
+{{- define "github-scraping-agent-ai.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -24,16 +24,16 @@ Create a default fully qualified app name.
 {{/*
 Create chart name and version as used by the chart label.
 */}}
-{{- define "github-scraping-ai.chart" -}}
+{{- define "github-scraping-agent-ai.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 {{/*
 Common labels
 */}}
-{{- define "github-scraping-ai.labels" -}}
-helm.sh/chart: {{ include "github-scraping-ai.chart" . }}
-{{ include "github-scraping-ai.selectorLabels" . }}
+{{- define "github-scraping-agent-ai.labels" -}}
+helm.sh/chart: {{ include "github-scraping-agent-ai.chart" . }}
+{{ include "github-scraping-agent-ai.selectorLabels" . }}
 {{- if .Chart.AppVersion }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
@@ -43,18 +43,18 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{/*
 Selector labels
 */}}
-{{- define "github-scraping-ai.selectorLabels" -}}
-app.kubernetes.io/name: {{ include "github-scraping-ai.name" . }}
+{{- define "github-scraping-agent-ai.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "github-scraping-agent-ai.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end }}
 
 {{/*
 Secret name to use
 */}}
-{{- define "github-scraping-ai.secretName" -}}
+{{- define "github-scraping-agent-ai.secretName" -}}
 {{- if .Values.existingSecret.name }}
 {{- .Values.existingSecret.name }}
 {{- else }}
-{{- include "github-scraping-ai.fullname" . }}
+{{- include "github-scraping-agent-ai.fullname" . }}
 {{- end }}
 {{- end }}

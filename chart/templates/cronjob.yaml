@@ -1,9 +1,9 @@
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: {{ include "github-scraping-ai.fullname" . }}
+  name: {{ include "github-scraping-agent-ai.fullname" . }}
   labels:
-    {{- include "github-scraping-ai.labels" . | nindent 4 }}
+    {{- include "github-scraping-agent-ai.labels" . | nindent 4 }}
 spec:
   schedule: {{ .Values.schedule | quote }}
   concurrencyPolicy: {{ .Values.concurrencyPolicy }}
@@ -14,7 +14,7 @@ spec:
       template:
         metadata:
           labels:
-            {{- include "github-scraping-ai.selectorLabels" . | nindent 12 }}
+            {{- include "github-scraping-agent-ai.selectorLabels" . | nindent 12 }}
           {{- with .Values.podAnnotations }}
           annotations:
             {{- toYaml . | nindent 12 }}
@@ -56,17 +56,17 @@ spec:
                 - name: GITHUB_TOKEN
                   valueFrom:
                     secretKeyRef:
-                      name: {{ include "github-scraping-ai.secretName" . }}
+                      name: {{ include "github-scraping-agent-ai.secretName" . }}
                       key: {{ .Values.existingSecret.githubTokenKey }}
                 - name: LLM_API_KEY
                   valueFrom:
                     secretKeyRef:
-                      name: {{ include "github-scraping-ai.secretName" . }}
+                      name: {{ include "github-scraping-agent-ai.secretName" . }}
                       key: {{ .Values.existingSecret.llmApiKeyKey }}
                 - name: DISCORD_WEBHOOK
                   valueFrom:
                     secretKeyRef:
-                      name: {{ include "github-scraping-ai.secretName" . }}
+                      name: {{ include "github-scraping-agent-ai.secretName" . }}
                       key: {{ .Values.existingSecret.discordWebhookKey }}
                 {{- with .Values.extraEnv }}
                 {{- toYaml . | nindent 16 }}
@@ -81,6 +81,6 @@ spec:
           volumes:
             - name: config
               configMap:
-                name: {{ include "github-scraping-ai.fullname" . }}
+                name: {{ include "github-scraping-agent-ai.fullname" . }}
             - name: data
               emptyDir: {}

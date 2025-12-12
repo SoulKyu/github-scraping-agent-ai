@@ -133,7 +133,7 @@ wheels = [
 ]
 
 [[package]]
-name = "github-scraping-ai"
+name = "github-scraping-agent-ai"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

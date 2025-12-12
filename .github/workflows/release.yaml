@@ -31,6 +31,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: write
 
     steps:
       - name: Checkout code
@@ -74,21 +75,31 @@ jobs:
           echo -e "$FORMATTED_CONTRIBUTORS" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
+          echo "Previous tag: ${LATEST_TAG:-none}"
+          echo "Commits since last release:"
+          echo "$COMMITS"
+          echo ""
+          echo "Contributors:"
+          echo -e "$FORMATTED_CONTRIBUTORS"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
-          username: soulkyu
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push Docker image
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          docker build -t soulkyu/github-scraping-ai:${VERSION} -t soulkyu/github-scraping-ai:latest .
-          docker push soulkyu/github-scraping-ai:${VERSION}
-          docker push soulkyu/github-scraping-ai:latest
+          IMAGE="ghcr.io/${{ github.repository_owner }}/github-scraping-agent-ai"
+
+          docker build -t ${IMAGE}:${VERSION} -t ${IMAGE}:latest .
+          docker push ${IMAGE}:${VERSION}
+          docker push ${IMAGE}:latest
 
       - name: Create and push tag
         run: |
@@ -111,18 +122,24 @@ jobs:
             ${{ steps.changelog.outputs.commits }}
 
             ## Contributors
+            Thanks to everyone who contributed to this release! :heart:
+
             ${{ steps.changelog.outputs.contributors }}
 
             ## Docker Image
-            ```bash
-            docker pull soulkyu/github-scraping-ai:${{ steps.version.outputs.version }}
-            ```
+            Docker image is available on GHCR:
+            - `ghcr.io/${{ github.repository_owner }}/github-scraping-agent-ai:${{ steps.version.outputs.version }}`
 
-            Also available as `:latest`.
+            Also tagged as `:latest` for convenience.
+
+            ## Usage
+            ```bash
+            docker pull ghcr.io/${{ github.repository_owner }}/github-scraping-agent-ai:${{ steps.version.outputs.version }}
+            ```
 
             ## Helm Chart
             ```bash
-            helm install github-scraping-ai ./chart \
+            helm install github-scraping-agent-ai ./chart \
               --set config.github.token=ghp_xxx \
               --set config.llm.apiKey=sk-xxx \
               --set config.discord.webhookUrl=https://...

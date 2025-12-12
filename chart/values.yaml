@@ -2,7 +2,7 @@
 schedule: "0 9 * * *"
 
 image:
-  repository: ghcr.io/youruser/github-scraping-ai
+  repository: ghcr.io/soulkyu/github-scraping-agent-ai
   tag: latest
   pullPolicy: IfNotPresent
 

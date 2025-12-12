@@ -41,8 +41,8 @@ GitHub API → Fetch top 1000 new repos → LLM evaluates each against your prom
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/github-scraping-ai.git
-cd github-scraping-ai
+git clone https://github.com/yourusername/github-scraping-agent-ai.git
+cd github-scraping-agent-ai
 
 # Install dependencies
 uv sync
@@ -138,13 +138,85 @@ The pipeline logs rejected repositories to `rejected_repos.log` (configurable wi
 
 ```bash
 # Run daily at 9 AM
-0 9 * * * cd /path/to/github-scraping-ai && uv run python -m src.main >> /var/log/github-scraping.log 2>&1
+0 9 * * * cd /path/to/github-scraping-agent-ai && uv run python -m src.main >> /var/log/github-scraping.log 2>&1
+```
+
+## Kubernetes Deployment
+
+A Helm chart is included for deploying as a CronJob on Kubernetes.
+
+### Quick Install
+
+```bash
+helm install github-scraping-agent-ai ./chart \
+  --set config.github.token=ghp_xxx \
+  --set config.llm.apiKey=sk-xxx \
+  --set config.discord.webhookUrl=https://discord.com/api/webhooks/xxx
+```
+
+### Using Existing Secret (Recommended)
+
+```bash
+# Create secret with your credentials
+kubectl create secret generic github-scraping-agent-ai-secrets \
+  --from-literal=github-token=ghp_xxx \
+  --from-literal=llm-api-key=sk-xxx \
+  --from-literal=discord-webhook=https://discord.com/api/webhooks/xxx
+
+# Install chart referencing the secret
+helm install github-scraping-agent-ai ./chart \
+  --set existingSecret.name=github-scraping-agent-ai-secrets
+```
+
+### Custom Values
+
+Create a `my-values.yaml`:
+
+```yaml
+schedule: "0 9 * * *"  # Daily at 9 AM
+
+config:
+  github:
+    keywords: ["kubernetes", "devops", "terraform", "helm"]
+  llm:
+    provider: openai
+    model: gpt-4o-mini
+  settings:
+    maxRepos: 500
+    since: "1d"
+
+prompt: |
+  I'm interested in:
+  - Kubernetes tools and operators
+  - DevOps and CI/CD tooling
+  - Infrastructure as Code
+
+  I'm NOT interested in:
+  - AI/ML projects
+  - Cryptocurrency
+
+existingSecret:
+  name: github-scraping-agent-ai-secrets
+```
+
+```bash
+helm install github-scraping-agent-ai ./chart -f my-values.yaml
+```
+
+### Docker
+
+```bash
+docker pull ghcr.io/soulkyu/github-scraping-agent-ai:latest
+
+docker run -v $(pwd)/config.json:/app/config.json \
+           -v $(pwd)/prompt.md:/app/prompt.md \
+           ghcr.io/soulkyu/github-scraping-agent-ai:latest
 ```
 
 ## Project Structure
 
 ```
-github-scraping-ai/
+github-scraping-agent-ai/
 ├── src/
 │   ├── main.py          # CLI and pipeline orchestration
 │   ├── config.py        # Configuration loading
