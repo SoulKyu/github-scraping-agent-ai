@@ -44,7 +44,9 @@ jobs:
         id: version
         run: |
           VERSION="v$(date +'%Y.%m.%d')-$(git rev-parse --short HEAD)"
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "owner_lowercase=$OWNER_LC" >> $GITHUB_OUTPUT
           echo "Generated version: $VERSION"
 
       - name: Generate changelog
@@ -95,7 +97,7 @@ jobs:
       - name: Build and push Docker image
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          IMAGE="ghcr.io/${{ github.repository_owner }}/github-scraping-agent-ai"
+          IMAGE="ghcr.io/${{ steps.version.outputs.owner_lowercase }}/github-scraping-agent-ai"
 
           docker build -t ${IMAGE}:${VERSION} -t ${IMAGE}:latest .
           docker push ${IMAGE}:${VERSION}
@@ -128,13 +130,13 @@ jobs:
 
             ## Docker Image
             Docker image is available on GHCR:
-            - `ghcr.io/${{ github.repository_owner }}/github-scraping-agent-ai:${{ steps.version.outputs.version }}`
+            - `ghcr.io/${{ steps.version.outputs.owner_lowercase }}/github-scraping-agent-ai:${{ steps.version.outputs.version }}`
 
             Also tagged as `:latest` for convenience.
 
             ## Usage
             ```bash
-            docker pull ghcr.io/${{ github.repository_owner }}/github-scraping-agent-ai:${{ steps.version.outputs.version }}
+            docker pull ghcr.io/${{ steps.version.outputs.owner_lowercase }}/github-scraping-agent-ai:${{ steps.version.outputs.version }}
             ```
 
             ## Helm Chart
