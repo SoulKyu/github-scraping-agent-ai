@@ -1,0 +1,20 @@
+{
+  "github": {
+    "token": "ghp_your_github_token_here",
+    "keywords": ["kubernetes", "devops", "terraform", "helm", "gitops"]
+  },
+  "llm": {
+    "provider": "openai",
+    "model": "gpt-4o-mini",
+    "api_key": "sk-your-openai-key-here"
+  },
+  "discord": {
+    "webhook_url": "https://discord.com/api/webhooks/your/webhook"
+  },
+  "settings": {
+    "max_repos": 1000,
+    "readme_max_chars": 500,
+    "batch_size": 10,
+    "cache_days": 30
+  }
+}

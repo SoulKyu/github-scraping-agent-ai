@@ -1,0 +1,199 @@
+"""GitHub Scraping AI - Main entry point."""
+
+import argparse
+import asyncio
+import logging
+import sys
+from datetime import date, datetime, timedelta
+from pathlib import Path
+
+from src.cache import RepoCache
+from src.config import load_config
+from src.discord import DiscordClient
+from src.github import AsyncGitHubClient
+from src.llm import create_provider
+from src.prompt import load_prompt
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+def log_rejected_repo(log_path: Path, repo, reason: str) -> None:
+    """Log a rejected repository to file for prompt fine-tuning."""
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with open(log_path, "a") as f:
+        f.write(f"[{timestamp}] {repo.full_name} ({repo.stars}⭐)\n")
+        f.write(f"  URL: {repo.url}\n")
+        f.write(f"  Description: {repo.description or 'N/A'}\n")
+        f.write(f"  Language: {repo.language or 'N/A'}\n")
+        f.write(f"  Topics: {', '.join(repo.topics) if repo.topics else 'N/A'}\n")
+        f.write(f"  Reason: {reason}\n")
+        f.write("\n")
+
+
+async def run_pipeline_async(
+    config_path: Path,
+    prompt_path: Path,
+    cache_path: Path,
+    dry_run: bool = False,
+    since_date: str | None = None,
+    rejected_log_path: Path | None = None,
+) -> dict:
+    """Run the GitHub discovery pipeline asynchronously.
+
+    Returns:
+        Dict with 'processed' and 'matched' counts
+    """
+    # Load configuration
+    config = load_config(config_path)
+    prompt = load_prompt(prompt_path)
+    cache = RepoCache(cache_path, cache_days=config.cache_days)
+
+    # Calculate date range
+    if since_date is None:
+        since_date = (date.today() - timedelta(days=1)).isoformat()
+
+    logger.info(f"Fetching repos created since {since_date}")
+
+    # Fetch repositories using async client
+    async with AsyncGitHubClient(token=config.github_token, max_concurrency=10) as github:
+        # Search repos (excludes forks by default)
+        repos = await github.search_repos(
+            since_date=since_date,
+            max_repos=config.max_repos,
+            exclude_forks=True,
+            keywords=config.keywords if config.keywords else None,
+        )
+        if config.keywords:
+            logger.info(f"Found {len(repos)} repositories matching keywords: {', '.join(config.keywords)}")
+        else:
+            logger.info(f"Found {len(repos)} repositories (forks excluded)")
+
+        # Filter out already seen repos before fetching READMEs
+        new_repos = [r for r in repos if not cache.is_seen(r.full_name)]
+        logger.info(f"New repos (not in cache): {len(new_repos)}")
+
+        # Fetch READMEs concurrently for new repos only
+        if new_repos:
+            logger.info(f"Fetching READMEs for {len(new_repos)} repos concurrently...")
+            readmes = await github.fetch_readmes(new_repos, max_chars=config.readme_max_chars)
+
+            # Attach READMEs to repos
+            for repo in new_repos:
+                repo.readme = readmes.get(repo.full_name, "")
+
+    # Evaluate with LLM
+    llm = create_provider(config.llm_provider, config.llm_model, config.llm_api_key)
+    matched = []
+    rejected_count = 0
+
+    for i, repo in enumerate(new_repos):
+        logger.info(f"Evaluating {i+1}/{len(new_repos)}: {repo.full_name}")
+        result = llm.evaluate(repo, prompt)
+
+        if result.interested:
+            matched.append((repo, result))
+            logger.info(f"  ✓ Interested: {result.reason}")
+        else:
+            logger.debug(f"  ✗ Not interested: {result.reason}")
+            rejected_count += 1
+            if rejected_log_path:
+                log_rejected_repo(rejected_log_path, repo, result.reason)
+
+        # Mark as seen regardless of interest
+        cache.mark_seen(repo.full_name)
+
+    if rejected_log_path and rejected_count > 0:
+        logger.info(f"Logged {rejected_count} rejected repos to {rejected_log_path}")
+
+    logger.info(f"Matched {len(matched)} repos out of {len(new_repos)}")
+
+    # Send to Discord
+    if not dry_run and matched:
+        discord = DiscordClient(webhook_url=config.discord_webhook_url)
+        try:
+            discord.send_summary(total_found=len(matched), total_processed=len(new_repos))
+            discord.send_repos(matched, batch_size=config.batch_size)
+            logger.info("Sent results to Discord")
+        finally:
+            discord.close()
+    elif dry_run:
+        logger.info("Dry run - not sending to Discord")
+        for repo, result in matched:
+            print(f"  {repo.full_name} ({repo.stars}⭐): {result.reason}")
+
+    # Save cache
+    cache.prune()
+    cache.save()
+
+    return {"processed": len(new_repos), "matched": len(matched)}
+
+
+def run_pipeline(
+    config_path: Path,
+    prompt_path: Path,
+    cache_path: Path,
+    dry_run: bool = False,
+    since_date: str | None = None,
+    rejected_log_path: Path | None = None,
+) -> dict:
+    """Run the GitHub discovery pipeline (sync wrapper).
+
+    Returns:
+        Dict with 'processed' and 'matched' counts
+    """
+    return asyncio.run(
+        run_pipeline_async(
+            config_path=config_path,
+            prompt_path=prompt_path,
+            cache_path=cache_path,
+            dry_run=dry_run,
+            since_date=since_date,
+            rejected_log_path=rejected_log_path,
+        )
+    )
+
+
+def main() -> int:
+    """Run the GitHub scraping pipeline."""
+    parser = argparse.ArgumentParser(description="Discover interesting GitHub projects")
+    parser.add_argument("--dry-run", action="store_true", help="Show results without posting to Discord")
+    parser.add_argument("--since", type=str, help="Override date (YYYY-MM-DD)")
+    parser.add_argument("--config", type=str, default="config.json", help="Path to config file")
+    parser.add_argument("--prompt", type=str, default="prompt.md", help="Path to prompt file")
+    parser.add_argument("--cache", type=str, default="seen_repos.json", help="Path to cache file")
+    parser.add_argument("--rejected-log", type=str, default="rejected_repos.log", help="Path to rejected repos log file")
+
+    args = parser.parse_args()
+
+    # Resolve paths relative to current directory
+    base_dir = Path.cwd()
+    config_path = base_dir / args.config
+    prompt_path = base_dir / args.prompt
+    cache_path = base_dir / args.cache
+    rejected_log_path = base_dir / args.rejected_log
+
+    try:
+        result = run_pipeline(
+            config_path=config_path,
+            prompt_path=prompt_path,
+            cache_path=cache_path,
+            dry_run=args.dry_run,
+            since_date=args.since,
+            rejected_log_path=rejected_log_path,
+        )
+        logger.info(f"Done! Processed {result['processed']}, matched {result['matched']}")
+        return 0
+    except FileNotFoundError as e:
+        logger.error(str(e))
+        return 1
+    except Exception as e:
+        logger.exception(f"Pipeline failed: {e}")
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

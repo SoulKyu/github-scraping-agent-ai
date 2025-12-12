@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.venv/
+config.json
+seen_repos.json
+rejected_repos.log
