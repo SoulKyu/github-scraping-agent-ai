@@ -68,6 +68,37 @@ class GitHubClient:
             exclude_forks: Whether to exclude forked repositories
             keywords: Optional list of keywords for OR-based full-text search
         """
+        # GitHub limits to 5 OR operators, so max 6 keywords per query
+        MAX_KEYWORDS_PER_QUERY = 6
+
+        if keywords and len(keywords) > MAX_KEYWORDS_PER_QUERY:
+            # Split into batches and combine results
+            keyword_batches = [
+                keywords[i:i + MAX_KEYWORDS_PER_QUERY]
+                for i in range(0, len(keywords), MAX_KEYWORDS_PER_QUERY)
+            ]
+            all_repos: dict[str, Repository] = {}
+            for batch in keyword_batches:
+                batch_repos = self._search_repos_single(
+                    since_date, max_repos, exclude_forks, batch
+                )
+                for repo in batch_repos:
+                    if repo.full_name not in all_repos:
+                        all_repos[repo.full_name] = repo
+            # Sort by stars descending and limit
+            sorted_repos = sorted(all_repos.values(), key=lambda r: r.stars, reverse=True)
+            return sorted_repos[:max_repos]
+        else:
+            return self._search_repos_single(since_date, max_repos, exclude_forks, keywords)
+
+    def _search_repos_single(
+        self,
+        since_date: str,
+        max_repos: int,
+        exclude_forks: bool,
+        keywords: list[str] | None,
+    ) -> list[Repository]:
+        """Execute a single search query."""
         repos: list[Repository] = []
         page = 1
         per_page = 100
@@ -78,7 +109,7 @@ class GitHubClient:
             query = f"{query} fork:false"
         if keywords:
             keyword_query = " OR ".join(keywords)
-            query = f"{query} {keyword_query}"
+            query = f"{query} ({keyword_query})"
 
         while len(repos) < max_repos:
             response = self._client.get(
@@ -176,6 +207,37 @@ class AsyncGitHubClient:
         if not self._client:
             raise RuntimeError("Client not initialized. Use 'async with' context manager.")
 
+        # GitHub limits to 5 OR operators, so max 6 keywords per query
+        MAX_KEYWORDS_PER_QUERY = 6
+
+        if keywords and len(keywords) > MAX_KEYWORDS_PER_QUERY:
+            # Split into batches and combine results
+            keyword_batches = [
+                keywords[i:i + MAX_KEYWORDS_PER_QUERY]
+                for i in range(0, len(keywords), MAX_KEYWORDS_PER_QUERY)
+            ]
+            all_repos: dict[str, Repository] = {}
+            for batch in keyword_batches:
+                batch_repos = await self._search_repos_single(
+                    since_date, max_repos, exclude_forks, batch
+                )
+                for repo in batch_repos:
+                    if repo.full_name not in all_repos:
+                        all_repos[repo.full_name] = repo
+            # Sort by stars descending and limit
+            sorted_repos = sorted(all_repos.values(), key=lambda r: r.stars, reverse=True)
+            return sorted_repos[:max_repos]
+        else:
+            return await self._search_repos_single(since_date, max_repos, exclude_forks, keywords)
+
+    async def _search_repos_single(
+        self,
+        since_date: str,
+        max_repos: int,
+        exclude_forks: bool,
+        keywords: list[str] | None,
+    ) -> list[Repository]:
+        """Execute a single search query."""
         repos: list[Repository] = []
         page = 1
         per_page = 100
@@ -186,7 +248,7 @@ class AsyncGitHubClient:
             query = f"{query} fork:false"
         if keywords:
             keyword_query = " OR ".join(keywords)
-            query = f"{query} {keyword_query}"
+            query = f"{query} ({keyword_query})"
 
         while len(repos) < max_repos:
             response = await self._client.get(
