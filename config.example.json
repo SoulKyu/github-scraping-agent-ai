@@ -15,6 +15,7 @@
     "max_repos": 1000,
     "readme_max_chars": 500,
     "batch_size": 10,
-    "cache_days": 30
+    "cache_days": 30,
+    "min_stars": 0
   }
 }

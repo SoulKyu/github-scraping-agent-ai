@@ -73,6 +73,7 @@ async def run_pipeline_async(
     dry_run: bool = False,
     since_date: str | None = None,
     rejected_log_path: Path | None = None,
+    min_stars: int | None = None,
 ) -> dict:
     """Run the GitHub discovery pipeline asynchronously.
 
@@ -90,6 +91,9 @@ async def run_pipeline_async(
 
     logger.info(f"Fetching repos created since {since_date}")
 
+    # Resolve min_stars (CLI overrides config)
+    effective_min_stars = min_stars if min_stars is not None else config.min_stars
+
     # Fetch repositories using async client
     async with AsyncGitHubClient(token=config.github_token, max_concurrency=10) as github:
         # Search repos (excludes forks by default)
@@ -103,6 +107,11 @@ async def run_pipeline_async(
             logger.info(f"Found {len(repos)} repositories matching keywords: {', '.join(config.keywords)}")
         else:
             logger.info(f"Found {len(repos)} repositories (forks excluded)")
+
+        # Filter by minimum stars
+        if effective_min_stars > 0:
+            repos = [r for r in repos if r.stars >= effective_min_stars]
+            logger.info(f"After min_stars filter ({effective_min_stars}): {len(repos)} repositories")
 
         # Filter out already seen repos before fetching READMEs
         new_repos = [r for r in repos if not cache.is_seen(r.full_name)]
@@ -171,6 +180,7 @@ def run_pipeline(
     dry_run: bool = False,
     since_date: str | None = None,
     rejected_log_path: Path | None = None,
+    min_stars: int | None = None,
 ) -> dict:
     """Run the GitHub discovery pipeline (sync wrapper).
 
@@ -185,6 +195,7 @@ def run_pipeline(
             dry_run=dry_run,
             since_date=since_date,
             rejected_log_path=rejected_log_path,
+            min_stars=min_stars,
         )
     )
 
@@ -198,6 +209,7 @@ def main() -> int:
     parser.add_argument("--prompt", type=str, default="prompt.md", help="Path to prompt file")
     parser.add_argument("--cache", type=str, default="seen_repos.json", help="Path to cache file")
     parser.add_argument("--rejected-log", type=str, default="rejected_repos.log", help="Path to rejected repos log file")
+    parser.add_argument("--min-stars", type=int, default=None, help="Minimum stars required (overrides config)")
 
     args = parser.parse_args()
 
@@ -222,6 +234,7 @@ def main() -> int:
             dry_run=args.dry_run,
             since_date=since_date,
             rejected_log_path=rejected_log_path,
+            min_stars=args.min_stars,
         )
         logger.info(f"Done! Processed {result['processed']}, matched {result['matched']}")
         return 0

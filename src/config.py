@@ -19,6 +19,7 @@ class Config:
     batch_size: int
     cache_days: int
     keywords: list[str]
+    min_stars: int
 
 
 def load_config(config_path: Path) -> Config:
@@ -40,4 +41,5 @@ def load_config(config_path: Path) -> Config:
         batch_size=data["settings"]["batch_size"],
         cache_days=data["settings"]["cache_days"],
         keywords=data["github"].get("keywords", []),
+        min_stars=data["settings"].get("min_stars", 0),
     )
