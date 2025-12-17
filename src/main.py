@@ -94,28 +94,29 @@ async def run_pipeline_async(
     # Resolve min_stars (CLI overrides config)
     effective_min_stars = min_stars if min_stars is not None else config.min_stars
 
-    # Fetch repositories using async client
+    # Get cached repos to skip during fetch
+    cached_repos = cache.get_seen_repos()
+    logger.info(f"Repos in cache: {len(cached_repos)}")
+
+    # Fetch repositories using async client (skips cached repos)
     async with AsyncGitHubClient(token=config.github_token, max_concurrency=10) as github:
-        # Search repos (excludes forks by default)
-        repos = await github.search_repos(
+        # Search repos (excludes forks and cached repos)
+        new_repos = await github.search_repos(
             since_date=since_date,
             max_repos=config.max_repos,
             exclude_forks=True,
             keywords=config.keywords if config.keywords else None,
+            skip_repos=cached_repos,
         )
         if config.keywords:
-            logger.info(f"Found {len(repos)} repositories matching keywords: {', '.join(config.keywords)}")
+            logger.info(f"Found {len(new_repos)} new repositories matching keywords: {', '.join(config.keywords)}")
         else:
-            logger.info(f"Found {len(repos)} repositories (forks excluded)")
+            logger.info(f"Found {len(new_repos)} new repositories (forks excluded)")
 
         # Filter by minimum stars
         if effective_min_stars > 0:
-            repos = [r for r in repos if r.stars >= effective_min_stars]
-            logger.info(f"After min_stars filter ({effective_min_stars}): {len(repos)} repositories")
-
-        # Filter out already seen repos before fetching READMEs
-        new_repos = [r for r in repos if not cache.is_seen(r.full_name)]
-        logger.info(f"New repos (not in cache): {len(new_repos)}")
+            new_repos = [r for r in new_repos if r.stars >= effective_min_stars]
+            logger.info(f"After min_stars filter ({effective_min_stars}): {len(new_repos)} repositories")
 
         # Fetch READMEs concurrently for new repos only
         if new_repos:

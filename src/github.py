@@ -195,6 +195,7 @@ class AsyncGitHubClient:
         max_repos: int = 1000,
         exclude_forks: bool = True,
         keywords: list[str] | None = None,
+        skip_repos: set[str] | None = None,
     ) -> list[Repository]:
         """Search for repositories created since given date, sorted by stars.
 
@@ -203,9 +204,12 @@ class AsyncGitHubClient:
             max_repos: Maximum number of repositories to return
             exclude_forks: Whether to exclude forked repositories
             keywords: Optional list of keywords for OR-based full-text search
+            skip_repos: Set of repo full_names to skip (e.g., already cached)
         """
         if not self._client:
             raise RuntimeError("Client not initialized. Use 'async with' context manager.")
+
+        skip_repos = skip_repos or set()
 
         # GitHub limits to 5 OR operators, so max 6 keywords per query
         MAX_KEYWORDS_PER_QUERY = 6
@@ -219,7 +223,7 @@ class AsyncGitHubClient:
             all_repos: dict[str, Repository] = {}
             for batch in keyword_batches:
                 batch_repos = await self._search_repos_single(
-                    since_date, max_repos, exclude_forks, batch
+                    since_date, max_repos, exclude_forks, batch, skip_repos
                 )
                 for repo in batch_repos:
                     if repo.full_name not in all_repos:
@@ -228,7 +232,7 @@ class AsyncGitHubClient:
             sorted_repos = sorted(all_repos.values(), key=lambda r: r.stars, reverse=True)
             return sorted_repos[:max_repos]
         else:
-            return await self._search_repos_single(since_date, max_repos, exclude_forks, keywords)
+            return await self._search_repos_single(since_date, max_repos, exclude_forks, keywords, skip_repos)
 
     async def _search_repos_single(
         self,
@@ -236,6 +240,7 @@ class AsyncGitHubClient:
         max_repos: int,
         exclude_forks: bool,
         keywords: list[str] | None,
+        skip_repos: set[str],
     ) -> list[Repository]:
         """Execute a single search query."""
         repos: list[Repository] = []
@@ -270,6 +275,9 @@ class AsyncGitHubClient:
 
             for item in items:
                 repo = Repository.from_api(item)
+                # Skip repos in skip set (e.g., already cached)
+                if repo.full_name in skip_repos:
+                    continue
                 repos.append(repo)
                 if len(repos) >= max_repos:
                     break

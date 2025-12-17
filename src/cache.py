@@ -24,6 +24,10 @@ class RepoCache:
         """Check if a repository has been seen."""
         return full_name in self._data
 
+    def get_seen_repos(self) -> set[str]:
+        """Get all seen repository names."""
+        return set(self._data.keys())
+
     def mark_seen(self, full_name: str) -> None:
         """Mark a repository as seen today."""
         self._data[full_name] = date.today().isoformat()
